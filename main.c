@@ -55,6 +55,7 @@ int _cached_RCON = 0;
 unsigned int channel4;	// conversion result as read from result buffer
 unsigned int channel5;	// conversion result as read from result buffer
 unsigned int offset;	// buffer offset to point to the base of the idle buffer
+unsigned int touchscreenXCoordinate, touchscreenYCoordinate; // will hold both the X and Y coordinates of the touchscreen each time its sampled
 
 void initializeATD(void)
 {
@@ -85,7 +86,6 @@ void initializeATD(void)
     #define PARAM5    ENABLE_AN4_ANA | ENABLE_AN5_ANA
 
         // use ground as neg ref for A | use AN4 for input A      |  use ground as neg ref for A | use AN5 for input B
-
      // configure to sample AN4 & AN5
     SetChanADC10( ADC_CH0_NEG_SAMPLEA_NVREF | ADC_CH0_POS_SAMPLEA_AN4 |  ADC_CH0_NEG_SAMPLEB_NVREF | ADC_CH0_POS_SAMPLEB_AN5); // configure to sample AN4 & AN5
     OpenADC10( PARAM1, PARAM2, PARAM3, PARAM4, PARAM5 ); // configure ADC using parameter define above
@@ -163,6 +163,161 @@ void initialize(void)
 //    PORTSetPinsDigitalIn(HORN);
 //    PORTSetPinsDigitalIn(LEFT_T);
 //    PORTSetPinsDigitalIn(RIGHT_T);
+}
+
+/*
+ * @author - Vineeth
+ *
+ * @params - void
+ *
+ * Intializes the LCD by sending the various initializations
+ */
+
+void initializeLCD(void) {
+    /*
+     * LCD PIN # || Symbol || PIC32MX795F512H pin assignment
+     *     1          Vss                GND
+     *     2          Vdd                3.3V
+     *     3          Vo                 0.1V(contrast)
+     *     4          RS                 54
+     *     5          R/W                53
+     *     6          E                  52
+     *     7          DB0                64
+     *     8          DB1                63
+     *     9          DB2                62
+     *     10         DB3                61
+     *     11         DB4                60
+     *     12         DB5                59
+     *     13         DB6                58
+     *     14         DB7                55
+     *     15         LED+               3.3V(Backlight Power)
+     *     16         LED-               GND (Backlight GND)
+     */
+
+    PORTSetPinsDigitalOut(IOPORT_E, BIT_4); //DB0
+    PORTSetPinsDigitalOut(IOPORT_E, BIT_3); //DB1
+    PORTSetPinsDigitalOut(IOPORT_E, BIT_2); //DB2
+    PORTSetPinsDigitalOut(IOPORT_E, BIT_1); //DB3
+    PORTSetPinsDigitalOut(IOPORT_E, BIT_0); //DB4
+    PORTSetPinsDigitalOut(IOPORT_F, BIT_1); //DB5
+    PORTSetPinsDigitalOut(IOPORT_F, BIT_0); //DB6
+    PORTSetPinsDigitalOut(IOPORT_D, BIT_7); //DB7
+    PORTSetPinsDigitalOut(IOPORT_D, BIT_6); //RS
+    PORTSetPinsDigitalOut(IOPORT_D, BIT_5); //R/W
+    PORTSetPinsDigitalOut(IOPORT_D, BIT_4); //E
+
+    PORTClearBits(IOPORT_D, BIT_4); // E = 0
+    delay(100);
+    sendByteToLCD(0x30, 0, 0); // Wake up
+    delay(30);
+    sendByteToLCD(0x30, 0, 0); // WAKE UP!
+    delay(10);
+    sendByteToLCD(0x30, 0, 0); // I WILL BEAT YOU TO DEATH IF YOU DONT WAKE UP NOW
+    delay(10);
+    sendByteToLCD(0x38, 0, 0); // 8-bit and 2 line
+    sendByteToLCD(0x10, 0, 0); // set cursor
+    sendByteToLCD(0x0C, 0, 0); // display on; cursor on
+    sendByteToLCD(0x06, 0, 0); // entry mode on
+}
+
+/*
+ * @author - Vineeth
+ *
+ * @params - int LCDByte -- byte to be sent
+ *         - int dataOrInstruction -- 0 if instruction, 1 if data
+ *         - int RW -- 0 if write, 1 if read
+ *
+ * Used to send a specific data byte to the LCD to display
+ */
+void sendByteToLCD(char LCDByte, int dataOrInstruction, int RW) {
+    PORTSetPinsDigitalOut(IOPORT_E, BIT_4); //DB0
+    PORTSetPinsDigitalOut(IOPORT_E, BIT_3); //DB1
+    PORTSetPinsDigitalOut(IOPORT_E, BIT_2); //DB2
+    PORTSetPinsDigitalOut(IOPORT_E, BIT_1); //DB3
+    PORTSetPinsDigitalOut(IOPORT_E, BIT_0); //DB4
+    PORTSetPinsDigitalOut(IOPORT_F, BIT_1); //DB5
+    PORTSetPinsDigitalOut(IOPORT_F, BIT_0); //DB6
+    PORTSetPinsDigitalOut(IOPORT_D, BIT_7); //DB7
+    PORTSetPinsDigitalOut(IOPORT_D, BIT_6); //RS
+    PORTSetPinsDigitalOut(IOPORT_D, BIT_5); //R/W
+    PORTSetPinsDigitalOut(IOPORT_D, BIT_4); //E
+
+
+    (dataOrInstruction == 0) ? PORTClearBits(IOPORT_D, BIT_6) : PORTSetBits(IOPORT_D, BIT_6);
+    (RW == 0) ? PORTClearBits(IOPORT_D, BIT_5) : PORTSetBits(IOPORT_D, BIT_5);
+    ((LCDByte & 0x01) == 1) ? PORTSetBits(IOPORT_E, BIT_4) : PORTClearBits(IOPORT_E, BIT_4);
+    (((LCDByte >> 1) & 0x01) == 1) ? PORTSetBits(IOPORT_E, BIT_3) : PORTClearBits(IOPORT_E, BIT_3);
+    (((LCDByte >> 2) & 0x01) == 1) ? PORTSetBits(IOPORT_E, BIT_2) : PORTClearBits(IOPORT_E, BIT_2);
+    (((LCDByte >> 3) & 0x01) == 1) ? PORTSetBits(IOPORT_E, BIT_1) : PORTClearBits(IOPORT_E, BIT_1);
+    (((LCDByte >> 4) & 0x01) == 1) ? PORTSetBits(IOPORT_E, BIT_0) : PORTClearBits(IOPORT_E, BIT_0);
+    (((LCDByte >> 5) & 0x01) == 1) ? PORTSetBits(IOPORT_F, BIT_1) : PORTClearBits(IOPORT_F, BIT_1);
+    (((LCDByte >> 6) & 0x01) == 1) ? PORTSetBits(IOPORT_F, BIT_0) : PORTClearBits(IOPORT_F, BIT_0);
+    (((LCDByte >> 7) & 0x01) == 1) ? PORTSetBits(IOPORT_D, BIT_7) : PORTClearBits(IOPORT_D, BIT_7);
+
+    PORTSetBits(IOPORT_D, BIT_4);
+    delay(1);
+    PORTClearBits(IOPORT_D, BIT_4);
+
+}
+
+/*
+ * @author - Vineeth
+ *
+ * @params - char charToLCD -- character to be display
+ *
+ * Used for writing a character onto the LCD
+ */
+void displayCharacterOnLCD(char charToLCD) {
+    sendByteToLCD(charToLCD, 1, 0);
+}
+
+/*
+ * @author - Vineeth
+ *
+ * @params - void
+ *
+ * Samples both the X and Y coordinates on the touchscreen and saves them to the global touchscreenXCoordinate and touchscreenYCoordinate variabes.
+ */
+void sampleTouchscreenCoordinates() {
+    // first sample the x-coordinate on AN11 = Y-
+    // set X+ = RB8 = GND
+    PORTSetPinsDigitalOut(IOPORT_B, BIT_8);
+    PORTClearBits(IOPORT_B, BIT_8);
+    // set X- = AN10 = 3.3V
+    PORTSetPinsDigitalOut(IOPORT_B, BIT_10);
+    PORTSetBits(IOPORT_B, BIT_10);
+    // set Y+ = RB9 = Hi-Z
+    PORTSetPinsDigitalIn(IOPORT_B, BIT_9);
+    // set Y- = AN11 = ADC
+    PORTSetPinsDigitalIn(IOPORT_B, BIT_11);  // MAY HORRIBLY CRASH. ADC may need to be reconfigured each time.
+    delay(1); // wait and let it sample
+
+
+    // then sample the y-coordinate on AN10 = X-
+    // set X+ = RB8 = Hi-Z
+    PORTSetPinsDigitalIn(IOPORT_B, BIT_8);
+    // set X- = AN10 = ADC
+    PORTSetPinsDigitalIn(IOPORT_B, BIT_10);  // MAY HORRIBLY CRASH. ADC may need to be reconfigured each time.
+    // set Y+ = RB9 = GND
+    PORTSetPinsDigitalOut(IOPORT_B, BIT_9);
+    PORTClearBits(IOPORT_B, BIT_8);
+    // set Y- = AN11 = 3.3V
+    PORTSetPinsDigitalOut(IOPORT_B, BIT_8);
+    PORTSetBits(IOPORT_B, BIT_10);
+}
+
+/*
+ * @author - Vineeth
+ *
+ * @params - int delayTime in milliseconds -- causes delay based on delayTime
+ *
+ * Can be used anywhere a delay is needed to accodomate processing time or to wait on something
+ */
+void delay(int delayTime) {
+    long count = ((long)delayTime * 0.001) * Fcy;
+    while(count != 0) {
+        count--;
+    }
 }
 
 /*
@@ -266,6 +421,4 @@ int main(void)
         }
         printf("\n");
     }
-
-
 }
